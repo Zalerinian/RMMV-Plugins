@@ -56,6 +56,9 @@
 var Zale = Zale || {};
 Zale.Trace = {};
 
+var Imported = Imported || {};
+Imported["Zale_ConsoleTrace"] = "1.0.0";
+
 (function() {
 	'use strict'
 
@@ -157,7 +160,7 @@ Zale.Trace = {};
 							}
 							let today = (rightNow.getMonth() + 1) + "/" + rightNow.getDate() + "/" + rightNow.getFullYear();
 							let now = hours.padZero(2) + ":" + rightNow.getMinutes().padZero(2) + ":" + rightNow.getSeconds().padZero(2);
-							output += " " + today + " " + now + ampm + "]";
+							output += " " + today + " " + now + ampm + "] ";
 						}
 						output += msg.message + "\r\n";
 						fs.write(Zale.Trace._fileHandle, output, null, 'utf8', verifyWrite);
