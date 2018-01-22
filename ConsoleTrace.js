@@ -40,7 +40,7 @@
  * * Changing the behavior
  * ==============================================================================
  * The Trace plugin allows other plugins/developers to alter the logging level 
- * After the game has started. The logging level will be stored in Game_System,
+ * After the game has started. The logging level will be stored in save files,
  * and will default to the value define by the plugin if the value is not present
  * in a save.
  *
@@ -192,6 +192,15 @@ Imported["Zale_ConsoleTrace"] = "1.0.0";
 		Zale.Trace.setTraceLevel = function(level) {
 			if(typeof Zale.Trace._Levels[level] === "number") {
 				Zale.Trace.Level = Zale.Trace._Levels[level];
+			} else if(typeof level === "number") {
+				let keys = Object.keys(Zale.Trace._Levels);
+				for(let i = 0; i < keys.length; ++i) {
+					if(Zale.Trace._Levels[keys[i]] == level) {
+						Zale.Trace.setTraceLevel(keys[i]);
+						return;
+					}
+				}
+				internalError("[Trace] " + level + " is does not have a valid level mapping!");
 			} else {
 				internalError("[Trace] " + level + " is not a valid trace level!");
 			}
@@ -205,6 +214,9 @@ Imported["Zale_ConsoleTrace"] = "1.0.0";
 		// If no file was open, we have nothing to close, so we just open the new one.
 		Zale.Trace.setTraceFile = function(filepath) {
 			if(Zale.Trace._fileHandle >= 0) {
+				if(filepath == Zale.Trace.file) {
+					return;
+				}
 				Zale.Trace._fileHandleBackup = Zale.Trace._fileHandle;
 				fs.close(Zale.Trace._fileHandle, function(error) {
 					if(error != null) {
@@ -293,5 +305,25 @@ Imported["Zale_ConsoleTrace"] = "1.0.0";
 			}
 			console_debug.apply(this, arguments);
 		}
+
+		let DataManager_msc = DataManager.makeSaveContents;
+		DataManager.makeSaveContents = function() {
+			let contents = DataManager_msc.apply(this, arguments);
+			contents._zale_trace = {level: Zale.Trace.Level, file: Zale.Trace._file};
+			return contents;
+		}
+
+		let DataManager_esc = DataManager.extractSaveContents;
+		DataManager.extractSaveContents = function(contents) {
+			DataManager_esc.apply(this, arguments);
+			let settings = contents._zale_trace;
+			if(settings == undefined) {
+				settings = {level: plugin.parameters.level, file: plugin.parameters.file};
+			}
+			Zale.Trace.setTraceLevel(settings.level);
+			Zale.Trace.setTraceFile(settings.file);
+			console.log("[ConsoleTrace] Set trace level " + settings.level + " in file " + settings.file);
+		}
+
 	}
 })();
