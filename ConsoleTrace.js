@@ -56,7 +56,6 @@ Zale.Trace = {};
 	// The plugin is only available on desktop clients, as there is no file system access on the web,
 	// and the console will always be available.
 	if(Utils.isNwjs()) {
-
 		Zale.Trace._Levels = {
 			Error: 4,
 			Warning: 3,
@@ -73,18 +72,25 @@ Zale.Trace = {};
 		Zale.Trace._writing = false;
 		Zale.Trace._file = "";
 
+		let fs = require('fs');
 		let plugin = $plugins.filter(function(p) {
 		  return p.description.contains('<ID: ze_trace_b4ucga>') && p.status
 		})[0];
 
 		if(plugin == null) {
-			console.error("[Trace] Failed to load plugin parameters!");
+			internalError("[Trace] Failed to load plugin parameters!");
 			return;
 		}
 
-		// Only active the plugin on desktop games, as web versions don't have access to fs.
-		let fs = require('fs');
-		
+		// In order to prevent an infinite loop if there's an error in this plugin, we store the current
+		// logging level, set the level to not log anything, log the error in the console as per usual,
+		// and then reset the level so future calls to console.error go through the plugin.
+		function internalError(message) {
+			let level = Zale.Trace.Level;
+			Zale.Trace.Level = Zale.Trace._Levels["None"];
+			console.error(message);
+			Zale.Trace.Level = level;
+		}
 
 		// Opens the specified path as the trace file, and store it so we
 		// can keep trying to open it if it fails.
@@ -98,8 +104,8 @@ Zale.Trace = {};
 		// write a message if we need to.
 		function handleFileOpen(err, fd) {
 			if(err != null) {
-				console.error("[Trace] Failed to open file for logging. Trying again with default file in 5 seconds.");
-				console.error(err);
+				internalError("[Trace] Failed to open file for logging. Trying again with default file in 5 seconds.");
+				internalError(err);
 				setTimeout(function() { Zale.Trace.setTraceFile(Zale.Trace._file); }, 5000);
 				return;
 			}
@@ -142,8 +148,8 @@ Zale.Trace = {};
 		// If it didn't have an error, increment the queue index and see if another message needs to be written.
 		function verifyWrite(err, bytesWritten, string) {
 			if(err != null) {
-				console.error("There was an error writing a message to the log file.");
-				console.error(err);
+				internalError("There was an error writing a message to the log file.");
+				internalError(err);
 				setTimeout(function() { writeMessageIfNeeded(); }, 1000);
 				return;
 			}
@@ -158,7 +164,7 @@ Zale.Trace = {};
 			if(typeof Zale.Trace._Levels[level] === "number") {
 				Zale.Trace.Level = Zale.Trace._Levels[level];
 			} else {
-				console.error("[Trace] " + level + " is not a valid trace level!");
+				internalError("[Trace] " + level + " is not a valid trace level!");
 			}
 		}
 
@@ -173,8 +179,8 @@ Zale.Trace = {};
 				Zale.Trace._fileHandleBackup = Zale.Trace._fileHandle;
 				fs.close(Zale.Trace._fileHandle, function(error) {
 					if(error != null) {
-						console.error("[Trace] Failed to close old log file");
-						console.error(error);
+						internalError("[Trace] Failed to close old log file");
+						internalError(error);
 						Zale.Trace._fileHandle = Zale.Trace._fileHandleBackup;
 						Zale.Trace._fileHandleBackup = -1;
 						if(!Zale.Trace._writing) {
