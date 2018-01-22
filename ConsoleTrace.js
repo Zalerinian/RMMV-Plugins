@@ -19,6 +19,12 @@
  * @type text
  * @default Log.txt
  *
+ * @param truncate
+ * @text Empty Log on Startup
+ * @desc Clear the log file each time the game is run. Organizes log files, but results in old errors being cleared out.
+ * @type boolean
+ * @default true
+ *
  * @help
  * ==============================================================================
  * * Overview
@@ -57,11 +63,11 @@ Zale.Trace = {};
 	// and the console will always be available.
 	if(Utils.isNwjs()) {
 		Zale.Trace._Levels = {
+			None: 5,
 			Error: 4,
 			Warning: 3,
 			Info: 2,
-			Debug: 1,
-			None: 0
+			Debug: 1
 		};
 
 		Zale.Trace.Level = Zale.Trace._Levels.None;
@@ -71,6 +77,7 @@ Zale.Trace = {};
 		Zale.Trace._fileHandleBackup = -1;
 		Zale.Trace._writing = false;
 		Zale.Trace._file = "";
+		Zale.Trace._instanceID = Date.now();
 
 		let fs = require('fs');
 		let plugin = $plugins.filter(function(p) {
@@ -96,7 +103,11 @@ Zale.Trace = {};
 		// can keep trying to open it if it fails.
 		function openTraceFile(path) {
 			Zale.Trace._file = path;
-			fs.open(path, "a", 0o666, handleFileOpen);
+			if(Zale.Trace._truncate) {
+				fs.open(path, "w", 0o666, handleFileOpen);
+			} else {
+				fs.open(path, "a", 0o666, handleFileOpen);
+			}
 		}
 
 		// If there was an error opening the file, try again in 5 seconds. Otherwise, set the 
@@ -104,7 +115,7 @@ Zale.Trace = {};
 		// write a message if we need to.
 		function handleFileOpen(err, fd) {
 			if(err != null) {
-				internalError("[Trace] Failed to open file for logging. Trying again with default file in 5 seconds.");
+				internalError("[Trace] Failed to open file for logging. Trying again in 5 seconds.");
 				internalError(err);
 				setTimeout(function() { Zale.Trace.setTraceFile(Zale.Trace._file); }, 5000);
 				return;
@@ -127,12 +138,29 @@ Zale.Trace = {};
 						Zale.Trace._queue.length = 0;
 						Zale.Trace._queueIdx = 0;
 						Zale.Trace._writing = false;
-						console.debug("Queue length and index reset!");
 						return;
 					} else {
 						Zale.Trace._writing = true;
 						let msg = Zale.Trace._queue[Zale.Trace._queueIdx];
-						fs.write(Zale.Trace._fileHandle, "[" + msg.type.toUpperCase() + "] " + msg.message + "\r\n", null, 'utf8', verifyWrite);
+						let output = "";
+						if(msg.type != null) {
+							let rightNow = new Date();
+							output = "[" + msg.type.toUpperCase();
+							if(!Zale.Trace._truncate) {
+								output += " (" + Zale.Trace._instanceID + ") ";
+							}
+							let hours = rightNow.getHours();
+							let ampm = rightNow.getHours() >= 12 ? "pm" : "am";
+							hours = hours == 0 ? 12 : hours;
+							if(hours > 12) {
+								hours -= 12;
+							}
+							let today = (rightNow.getMonth() + 1) + "/" + rightNow.getDate() + "/" + rightNow.getFullYear();
+							let now = hours.padZero(2) + ":" + rightNow.getMinutes().padZero(2) + ":" + rightNow.getSeconds().padZero(2);
+							output += " " + today + " " + now + ampm + "]";
+						}
+						output += msg.message + "\r\n";
+						fs.write(Zale.Trace._fileHandle, output, null, 'utf8', verifyWrite);
 					}
 				} else {
 					Zale.Trace._writing = false;
@@ -154,8 +182,6 @@ Zale.Trace = {};
 				return;
 			}
 			Zale.Trace._queueIdx++;
-			console.debug("Index: " + Zale.Trace._queueIdx);
-			console.debug("Queue Length: " + Zale.Trace._queue.length);
 			writeMessageIfNeeded();
 		}
 
@@ -214,8 +240,13 @@ Zale.Trace = {};
 
 
 		// Set the trace level and file according to the plugin parameters.
+		Zale.Trace.__params = plugin.parameters;
+		Zale.Trace._truncate = plugin.parameters.truncate === "true";
 		Zale.Trace.setTraceLevel(plugin.parameters.level);
 		Zale.Trace.setTraceFile(plugin.parameters.file);
+		if(!Zale.Trace._truncate) {
+			Zale.Trace.logMessage(null, "[Game Startup] Instance ID: " + Zale.Trace._instanceID);
+		}
 
 
 
@@ -224,7 +255,6 @@ Zale.Trace = {};
 		console.error = function(msg) {
 			if(Zale.Trace.Level <= Zale.Trace._Levels.Error) {
 				Zale.Trace.logMessage("error", msg);
-				writeMessageIfNeeded();
 			}
 			console_error.apply(this, arguments);
 		}
@@ -233,7 +263,6 @@ Zale.Trace = {};
 		console.warn = function(msg) {
 			if(Zale.Trace.Level <= Zale.Trace._Levels.Warning) {
 				Zale.Trace.logMessage("warn", msg);
-				writeMessageIfNeeded();
 			}
 			console_warn.apply(this, arguments);
 		}
@@ -242,7 +271,6 @@ Zale.Trace = {};
 		console.log = function(msg) {
 			if(Zale.Trace.Level <= Zale.Trace._Levels.Info) {
 				Zale.Trace.logMessage("info", msg);
-				writeMessageIfNeeded();
 			}
 			console_log.apply(this, arguments);
 		}
@@ -251,7 +279,6 @@ Zale.Trace = {};
 		console.info = function(msg) {
 			if(Zale.Trace.Level <= Zale.Trace._Levels.Info) {
 				Zale.Trace.logMessage("info", msg);
-				writeMessageIfNeeded();
 			}
 			console_info.apply(this, arguments);
 		}
@@ -260,7 +287,6 @@ Zale.Trace = {};
 		console.debug = function(msg) {
 			if(Zale.Trace.Level <= Zale.Trace._Levels.Debug) {
 				Zale.Trace.logMessage("debug", msg);
-				writeMessageIfNeeded();
 			}
 			console_debug.apply(this, arguments);
 		}
